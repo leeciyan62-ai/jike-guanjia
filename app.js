@@ -225,19 +225,27 @@
 
   function openDialog(dialog) {
     if (!dialog) return;
-    const backdrop = ensureBackdrop();
+    // 不用 showModal：原生 dialog 默认垂直居中，在手机/窄页上容易跑出当前视口
+    document.querySelectorAll("dialog.sheet.is-open, dialog.sheet[open]").forEach((d) => {
+      if (d !== dialog) closeDialog(d);
+    });
     try {
-      if (typeof dialog.showModal === "function") {
-        if (!dialog.open) dialog.showModal();
-        backdrop.hidden = true;
-        return;
-      }
+      if (dialog.open && typeof dialog.close === "function") dialog.close();
     } catch {
-      /* fall through */
+      /* ignore */
     }
     dialog.classList.add("is-open");
     dialog.setAttribute("open", "");
-    backdrop.hidden = false;
+    ensureBackdrop().hidden = false;
+    document.body.style.overflow = "hidden";
+    // 滚回顶部附近，避免页面长内容影响观感
+    try {
+      dialog.scrollTop = 0;
+      const body = dialog.querySelector(".form-body");
+      if (body) body.scrollTop = 0;
+    } catch {
+      /* ignore */
+    }
   }
 
   function closeDialog(dialog) {
@@ -252,6 +260,7 @@
     const openLeft = document.querySelector("dialog.sheet[open], dialog.sheet.is-open");
     const backdrop = document.getElementById("dialogBackdrop");
     if (backdrop && !openLeft) backdrop.hidden = true;
+    if (!openLeft) document.body.style.overflow = "";
   }
 
   function updateChildList() {
