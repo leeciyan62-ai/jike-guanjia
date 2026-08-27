@@ -206,6 +206,54 @@
     }, 2200);
   }
 
+  function ensureBackdrop() {
+    let backdrop = document.getElementById("dialogBackdrop");
+    if (!backdrop) {
+      backdrop = document.createElement("button");
+      backdrop.type = "button";
+      backdrop.id = "dialogBackdrop";
+      backdrop.className = "dialog-backdrop";
+      backdrop.setAttribute("aria-label", "关闭");
+      backdrop.hidden = true;
+      document.body.appendChild(backdrop);
+      backdrop.addEventListener("click", () => {
+        document.querySelectorAll("dialog.sheet[open], dialog.sheet.is-open").forEach((d) => closeDialog(d));
+      });
+    }
+    return backdrop;
+  }
+
+  function openDialog(dialog) {
+    if (!dialog) return;
+    const backdrop = ensureBackdrop();
+    try {
+      if (typeof dialog.showModal === "function") {
+        if (!dialog.open) dialog.showModal();
+        backdrop.hidden = true;
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    dialog.classList.add("is-open");
+    dialog.setAttribute("open", "");
+    backdrop.hidden = false;
+  }
+
+  function closeDialog(dialog) {
+    if (!dialog) return;
+    try {
+      if (typeof dialog.close === "function" && dialog.open) dialog.close();
+    } catch {
+      /* ignore */
+    }
+    dialog.classList.remove("is-open");
+    dialog.removeAttribute("open");
+    const openLeft = document.querySelector("dialog.sheet[open], dialog.sheet.is-open");
+    const backdrop = document.getElementById("dialogBackdrop");
+    if (backdrop && !openLeft) backdrop.hidden = true;
+  }
+
   function updateChildList() {
     const names = [
       ...new Set([
@@ -453,7 +501,7 @@
     els.courseForm.status.value = "planned";
     syncStatusNoteVisibility();
     renderSwatches(els.swatches, activeColor);
-    els.courseDialog.showModal();
+    openDialog(els.courseDialog);
   }
 
   function openEdit(id) {
@@ -474,7 +522,7 @@
     els.courseForm.statusNote.value = c.statusNote || "";
     syncStatusNoteVisibility();
     renderSwatches(els.swatches, activeColor);
-    els.courseDialog.showModal();
+    openDialog(els.courseDialog);
   }
 
   function openPackageCreate() {
@@ -487,7 +535,7 @@
     els.packageForm.totalFee.value = "0";
     els.packageForm.spentFee.value = "";
     renderSwatches(els.packageSwatches, packageColor);
-    els.packageDialog.showModal();
+    openDialog(els.packageDialog);
   }
 
   function openPackageEdit(id) {
@@ -505,7 +553,7 @@
     els.packageForm.deadline.value = pkg.deadline || "";
     els.packageForm.note.value = pkg.note || "";
     renderSwatches(els.packageSwatches, packageColor);
-    els.packageDialog.showModal();
+    openDialog(els.packageDialog);
   }
 
   function toggleSelect(id) {
@@ -555,7 +603,7 @@
     els.datesMode.hidden = false;
     els.weeksMode.hidden = true;
     renderPickedDates();
-    els.copyDialog.showModal();
+    openDialog(els.copyDialog);
   }
 
   function isConflict(candidate, existing) {
@@ -640,7 +688,9 @@
     renderCalendar();
   });
 
-  document.getElementById("btnAdd").addEventListener("click", () => {
+  document.getElementById("btnAdd").addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (activeTab === "dashboard") openPackageCreate();
     else openCreate(selectedDay);
   });
@@ -720,10 +770,10 @@
     }
   });
 
-  document.getElementById("closeDialog").addEventListener("click", () => els.courseDialog.close());
-  document.getElementById("cancelDialog").addEventListener("click", () => els.courseDialog.close());
-  document.getElementById("closePackage").addEventListener("click", () => els.packageDialog.close());
-  document.getElementById("cancelPackage").addEventListener("click", () => els.packageDialog.close());
+  document.getElementById("closeDialog").addEventListener("click", () => closeDialog(els.courseDialog));
+  document.getElementById("cancelDialog").addEventListener("click", () => closeDialog(els.courseDialog));
+  document.getElementById("closePackage").addEventListener("click", () => closeDialog(els.packageDialog));
+  document.getElementById("cancelPackage").addEventListener("click", () => closeDialog(els.packageDialog));
 
   els.deleteCourse.addEventListener("click", () => {
     if (!editingId) return;
@@ -731,7 +781,7 @@
     courses = courses.filter((c) => c.id !== editingId);
     selected.delete(editingId);
     save();
-    els.courseDialog.close();
+    closeDialog(els.courseDialog);
     render();
     showToast("已删除");
   });
@@ -743,7 +793,7 @@
     packages = packages.filter((p) => p.id !== id);
     courses = courses.map((c) => (c.packageId === id ? { ...c, packageId: "" } : c));
     save();
-    els.packageDialog.close();
+    closeDialog(els.packageDialog);
     render();
     showToast("已删除兴趣课");
   });
@@ -790,7 +840,7 @@
     weekStart = startOfWeek(parseDateKey(date));
     selectedDay = date;
     save();
-    els.courseDialog.close();
+    closeDialog(els.courseDialog);
     render();
   });
 
@@ -819,7 +869,7 @@
       showToast("已新增兴趣课");
     }
     save();
-    els.packageDialog.close();
+    closeDialog(els.packageDialog);
     render();
   });
 
@@ -848,11 +898,11 @@
     renderPickedDates();
   });
 
-  document.getElementById("closeCopy").addEventListener("click", () => els.copyDialog.close());
-  document.getElementById("cancelCopy").addEventListener("click", () => els.copyDialog.close());
+  document.getElementById("closeCopy").addEventListener("click", () => closeDialog(els.copyDialog));
+  document.getElementById("cancelCopy").addEventListener("click", () => closeDialog(els.copyDialog));
   els.copyForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    if (doBatchCopy()) els.copyDialog.close();
+    if (doBatchCopy()) closeDialog(els.copyDialog);
   });
 
   if (!courses.length && !packages.length && !localStorage.getItem(STORAGE_KEY + ":seen")) {
