@@ -11,7 +11,8 @@
     { id: "plum", value: "#6b4f7a" },
   ];
 
-  const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+  const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
+  const WEEKDAYS_FULL = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
   const STATUS = {
     planned: { label: "待上", color: "#94a3a0" },
@@ -21,32 +22,27 @@
     other: { label: "其他", color: "#6b4f7a" },
   };
 
-  /** @typedef {{id:string,title:string,child:string,date:string,start:string,end:string,note:string,color:string,status:string,statusNote:string,packageId:string}} Course */
-  /** @typedef {{id:string,name:string,child:string,totalSessions:number,totalFee:number,spentFee:number|null,deadline:string,note:string,color:string}} Package */
-
   const store = loadStore();
-  /** @type {Course[]} */
   let courses = store.courses;
-  /** @type {Package[]} */
   let packages = store.packages;
 
   let weekStart = startOfWeek(new Date());
+  let selectedDay = toDateKey(new Date());
   let activeTab = "calendar";
   let statsDays = 7;
-  /** @type {Set<string>} */
   let selected = new Set();
-  /** @type {string|null} */
   let editingId = null;
-  /** @type {string|null} */
   let editingPackageId = null;
   let activeColor = COLORS[0].value;
   let packageColor = COLORS[0].value;
-  /** @type {string[]} */
   let pickedTargetDates = [];
 
   const els = {
-    calendar: document.getElementById("calendar"),
     weekLabel: document.getElementById("weekLabel"),
+    dayStrip: document.getElementById("dayStrip"),
+    dayTitle: document.getElementById("dayTitle"),
+    agenda: document.getElementById("agenda"),
+    headerSub: document.getElementById("headerSub"),
     selectionBar: document.getElementById("selectionBar"),
     selectionCount: document.getElementById("selectionCount"),
     courseDialog: document.getElementById("courseDialog"),
@@ -74,8 +70,6 @@
     toast: document.getElementById("toast"),
     viewCalendar: document.getElementById("viewCalendar"),
     viewDashboard: document.getElementById("viewDashboard"),
-    calendarActions: document.getElementById("calendarActions"),
-    dashActions: document.getElementById("dashActions"),
     statGrid: document.getElementById("statGrid"),
     statusBars: document.getElementById("statusBars"),
     statusLegend: document.getElementById("statusLegend"),
@@ -83,6 +77,8 @@
     chartPeriodLabel: document.getElementById("chartPeriodLabel"),
     packageGrid: document.getElementById("packageGrid"),
   };
+
+  ensureSelectedDayInWeek();
 
   function loadStore() {
     try {
@@ -107,9 +103,6 @@
 
   function migrateCourses(list) {
     return list.map((c) => ({
-      status: "planned",
-      statusNote: "",
-      packageId: "",
       ...c,
       status: c.status && STATUS[c.status] ? c.status : "planned",
       statusNote: c.statusNote || "",
@@ -152,19 +145,27 @@
     return x;
   }
 
+  function ensureSelectedDayInWeek() {
+    const keys = Array.from({ length: 7 }, (_, i) => toDateKey(addDays(weekStart, i)));
+    if (!keys.includes(selectedDay)) selectedDay = keys[0];
+  }
+
   function formatWeekLabel(start) {
     const end = addDays(start, 6);
-    const sameYear = start.getFullYear() === end.getFullYear();
-    const left = `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日`;
-    const right = sameYear
-      ? `${end.getMonth() + 1}月${end.getDate()}日`
-      : `${end.getFullYear()}年${end.getMonth() + 1}月${end.getDate()}日`;
-    return `${left} – ${right}`;
+    return `${start.getMonth() + 1}/${start.getDate()} – ${end.getMonth() + 1}/${end.getDate()}`;
   }
 
   function formatShortDate(key) {
     const d = parseDateKey(key);
-    return `${d.getMonth() + 1}/${d.getDate()}（${WEEKDAYS[(d.getDay() + 6) % 7]}）`;
+    return `${d.getMonth() + 1}/${d.getDate()}（${WEEKDAYS_FULL[(d.getDay() + 6) % 7]}）`;
+  }
+
+  function formatDayTitle(key) {
+    const d = parseDateKey(key);
+    const today = toDateKey(new Date());
+    const wd = WEEKDAYS_FULL[(d.getDay() + 6) % 7];
+    const base = `${d.getMonth() + 1}月${d.getDate()}日 · ${wd}`;
+    return key === today ? `${base}（今天）` : base;
   }
 
   function timeToMinutes(t) {
@@ -216,41 +217,41 @@
   }
 
   function fillPackageSelect(selectedId = "") {
-    const opts = [`<option value="">不关联包课</option>`].concat(
-      packages.map(
-        (p) =>
-          `<option value="${p.id}"${p.id === selectedId ? " selected" : ""}>${escapeHtml(p.name)}${
-            p.child ? ` · ${escapeHtml(p.child)}` : ""
-          }</option>`
+    els.packageSelect.innerHTML = [`<option value="">不关联包课</option>`]
+      .concat(
+        packages.map(
+          (p) =>
+            `<option value="${p.id}"${p.id === selectedId ? " selected" : ""}>${escapeHtml(p.name)}${
+              p.child ? ` · ${escapeHtml(p.child)}` : ""
+            }</option>`
+        )
       )
-    );
-    els.packageSelect.innerHTML = opts.join("");
+      .join("");
   }
 
-  function renderSwatches(container, active, onPickAttr = "data-color") {
+  function renderSwatches(container, active) {
     container.innerHTML = COLORS.map(
       (c) =>
-        `<button type="button" class="swatch${c.value === active ? " active" : ""}" ${onPickAttr}="${c.value}" style="background:${c.value}" aria-label="${c.id}"></button>`
+        `<button type="button" class="swatch${c.value === active ? " active" : ""}" data-color="${c.value}" style="background:${c.value}" aria-label="${c.id}"></button>`
     ).join("");
   }
 
   function syncStatusNoteVisibility() {
     const status = els.courseForm.status.value;
-    const need = status === "leave" || status === "missed" || status === "other";
-    els.statusNoteWrap.hidden = !need;
+    els.statusNoteWrap.hidden = !(status === "leave" || status === "missed" || status === "other");
   }
 
   function switchTab(tab) {
     activeTab = tab;
-    document.querySelectorAll(".tab").forEach((btn) => {
+    document.querySelectorAll(".tabbar .tab").forEach((btn) => {
       const on = btn.dataset.tab === tab;
       btn.classList.toggle("active", on);
       btn.setAttribute("aria-selected", on ? "true" : "false");
     });
     els.viewCalendar.hidden = tab !== "calendar";
     els.viewDashboard.hidden = tab !== "dashboard";
-    els.calendarActions.hidden = tab !== "calendar";
-    els.dashActions.hidden = tab !== "dashboard";
+    els.headerSub.textContent = tab === "calendar" ? "周历安排" : "数据大盘";
+    document.getElementById("btnToday").hidden = tab !== "calendar";
     if (tab === "dashboard") renderDashboard();
   }
 
@@ -258,52 +259,56 @@
     const n = selected.size;
     els.selectionBar.hidden = n === 0;
     els.selectionCount.textContent = `已选 ${n} 节`;
-    const editBtn = document.getElementById("btnEditSelected");
-    if (editBtn) editBtn.hidden = n !== 1;
+    document.getElementById("btnEditSelected").hidden = n !== 1;
   }
 
   function renderCalendar() {
+    ensureSelectedDayInWeek();
     els.weekLabel.textContent = formatWeekLabel(weekStart);
+    els.dayTitle.textContent = formatDayTitle(selectedDay);
+
     const todayKey = toDateKey(new Date());
     const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-    els.calendar.innerHTML = days
-      .map((d) => {
+    els.dayStrip.innerHTML = days
+      .map((d, i) => {
         const key = toDateKey(d);
-        const dayCourses = sortCourses(courses.filter((c) => c.date === key));
-        const isToday = key === todayKey;
-        const weekday = WEEKDAYS[(d.getDay() + 6) % 7];
-
-        const cards = dayCourses.length
-          ? dayCourses
-              .map((c) => {
-                const sel = selected.has(c.id) ? " selected" : "";
-                const st = STATUS[c.status] || STATUS.planned;
-                const meta = [c.child, c.note].filter(Boolean).join(" · ");
-                const reason = c.statusNote ? ` · ${c.statusNote}` : "";
-                return `<button type="button" class="course status-${c.status}${sel}" data-id="${c.id}" style="background:${c.color}">
-                  <span class="check" aria-hidden="true"></span>
-                  <span class="time">${c.start}–${c.end}</span>
-                  <span class="title">${escapeHtml(c.title)}</span>
-                  ${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ""}
-                  <span class="status-tag">${st.label}${escapeHtml(reason)}</span>
-                </button>`;
-              })
-              .join("")
-          : `<div class="empty-day">暂无课程</div>`;
-
-        return `<article class="day-col${isToday ? " today" : ""}" data-date="${key}">
-          <div class="day-head" data-add-date="${key}">
-            <div>
-              <div class="weekday">${weekday}</div>
-              <div class="date-num">${d.getMonth() + 1}月${d.getDate()}日${isToday ? " · 今天" : ""}</div>
-            </div>
-            <span class="add-hint">＋加课</span>
-          </div>
-          <div class="day-body" data-add-date="${key}">${cards}</div>
-        </article>`;
+        const has = courses.some((c) => c.date === key);
+        const cls = [
+          "day-chip",
+          key === todayKey ? "today" : "",
+          key === selectedDay ? "active" : "",
+          has ? "has-course" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return `<button type="button" class="${cls}" data-day="${key}">
+          <span class="w">${WEEKDAYS[i]}</span>
+          <span class="d">${d.getDate()}</span>
+        </button>`;
       })
       .join("");
+
+    const dayCourses = sortCourses(courses.filter((c) => c.date === selectedDay));
+    els.agenda.innerHTML = dayCourses.length
+      ? dayCourses
+          .map((c) => {
+            const sel = selected.has(c.id) ? " selected" : "";
+            const st = STATUS[c.status] || STATUS.planned;
+            const meta = [c.child, c.note].filter(Boolean).join(" · ");
+            const reason = c.statusNote ? ` · ${c.statusNote}` : "";
+            return `<div class="course status-${c.status}${sel}" data-id="${c.id}" style="background:${c.color}">
+              <button type="button" class="check" data-toggle="${c.id}" aria-label="选择"></button>
+              <button type="button" class="body" data-edit="${c.id}">
+                <span class="time">${c.start}–${c.end}</span>
+                <span class="title">${escapeHtml(c.title)}</span>
+                ${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ""}
+                <span class="status-tag">${st.label}${escapeHtml(reason)}</span>
+              </button>
+            </div>`;
+          })
+          .join("")
+      : `<div class="empty-day">这天还没有课<br /><span style="font-size:.82rem">点右上角「加课」或底部 ＋</span></div>`;
 
     renderSelectionBar();
     updateChildList();
@@ -312,8 +317,7 @@
   function coursesInLastDays(days) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const from = addDays(today, -(days - 1));
-    const fromKey = toDateKey(from);
+    const fromKey = toDateKey(addDays(today, -(days - 1)));
     const toKey = toDateKey(today);
     return courses.filter((c) => c.date >= fromKey && c.date <= toKey);
   }
@@ -330,24 +334,19 @@
   function packageUsage(pkg) {
     const linked = courses.filter((c) => c.packageId === pkg.id);
     const done = linked.filter((c) => c.status === "done").length;
-    const leave = linked.filter((c) => c.status === "leave").length;
-    const missed = linked.filter((c) => c.status === "missed" || c.status === "other").length;
-    const planned = linked.filter((c) => c.status === "planned").length;
     const remaining = Math.max(0, pkg.totalSessions - done);
     const unit = pkg.totalSessions > 0 ? pkg.totalFee / pkg.totalSessions : 0;
     const autoSpent = done * unit;
     const spent = pkg.spentFee == null || pkg.spentFee === "" ? autoSpent : Number(pkg.spentFee);
     const progress = pkg.totalSessions > 0 ? Math.min(100, (done / pkg.totalSessions) * 100) : 0;
-    return { done, leave, missed, planned, remaining, unit, spent, autoSpent, progress, linked: linked.length };
+    return { done, remaining, unit, spent, progress };
   }
 
   function renderDashboard() {
     const list = coursesInLastDays(statsDays);
     const counts = countByStatus(list);
     const total = list.length;
-    const attended = counts.done;
-    const rate = total ? Math.round((attended / total) * 100) : 0;
-
+    const rate = total ? Math.round((counts.done / total) * 100) : 0;
     els.chartPeriodLabel.textContent = `近 ${statsDays} 天`;
 
     els.statGrid.innerHTML = [
@@ -381,14 +380,13 @@
     els.statusBars.innerHTML = parts
       .map(
         ([k, n]) =>
-          `<div class="bar-seg" style="width:${(n / denom) * 100}%;background:${STATUS[k].color}" title="${STATUS[k].label} ${n}"></div>`
+          `<div class="bar-seg" style="width:${(n / denom) * 100}%;background:${STATUS[k].color}"></div>`
       )
       .join("");
     els.statusLegend.innerHTML = parts
       .map(([k, n]) => `<span><i class="dot" style="background:${STATUS[k].color}"></i>${STATUS[k].label} ${n}</span>`)
       .join("");
 
-    // by course title
     const byTitle = new Map();
     for (const c of list) {
       const key = c.title || "未命名";
@@ -411,17 +409,13 @@
           .join("")
       : `<p class="subtle">这个周期还没有课程记录。</p>`;
 
-    // packages
     if (!packages.length) {
-      els.packageGrid.innerHTML = `<div class="pkg-empty">还没有兴趣课汇总。<br />点右上角「＋ 新增兴趣课」登记总课时与费用。</div>`;
+      els.packageGrid.innerHTML = `<div class="pkg-empty">还没有兴趣课。<br />点右上角「＋ 新增」登记总课时与费用。</div>`;
     } else {
       els.packageGrid.innerHTML = packages
         .map((pkg) => {
           const u = packageUsage(pkg);
-          const deadline = pkg.deadline
-            ? `目标 ${pkg.deadline.slice(5).replace("-", "/")} 前`
-            : "未设截止日期";
-          const feeLine = `已耗 ¥${money(u.spent)} / 总 ¥${money(pkg.totalFee)}`;
+          const deadline = pkg.deadline ? `目标 ${pkg.deadline.slice(5).replace("-", "/")} 前` : "未设截止日期";
           return `<button type="button" class="pkg-card" data-package-id="${pkg.id}" style="--pkg-color:${pkg.color}">
             <span class="stripe"></span>
             <h3>${escapeHtml(pkg.name)}</h3>
@@ -433,7 +427,7 @@
               <div><span class="k">单节约</span><span class="v">¥${money(u.unit)}</span></div>
             </div>
             <div class="progress"><i style="width:${u.progress}%"></i></div>
-            <div class="pkg-foot"><span>${deadline}</span><span>${feeLine}</span></div>
+            <div class="pkg-foot"><span>${deadline}</span><span>总费用 ¥${money(pkg.totalFee)}</span></div>
             ${pkg.note ? `<p class="pkg-note">${escapeHtml(pkg.note)}</p>` : ""}
           </button>`;
         })
@@ -453,14 +447,13 @@
     els.deleteCourse.hidden = true;
     els.courseForm.reset();
     fillPackageSelect("");
-    els.courseForm.date.value = dateKey || toDateKey(new Date());
+    els.courseForm.date.value = dateKey || selectedDay || toDateKey(new Date());
     els.courseForm.start.value = "10:00";
     els.courseForm.end.value = "11:00";
     els.courseForm.status.value = "planned";
     syncStatusNoteVisibility();
     renderSwatches(els.swatches, activeColor);
     els.courseDialog.showModal();
-    els.courseForm.title.focus();
   }
 
   function openEdit(id) {
@@ -495,7 +488,6 @@
     els.packageForm.spentFee.value = "";
     renderSwatches(els.packageSwatches, packageColor);
     els.packageDialog.showModal();
-    els.packageForm.name.focus();
   }
 
   function openPackageEdit(id) {
@@ -516,10 +508,6 @@
     els.packageDialog.showModal();
   }
 
-  function validateTimes(start, end) {
-    return timeToMinutes(end) > timeToMinutes(start);
-  }
-
   function toggleSelect(id) {
     if (selected.has(id)) selected.delete(id);
     else selected.add(id);
@@ -529,7 +517,9 @@
   function markSelected(status) {
     if (!selected.size) return;
     courses = courses.map((c) =>
-      selected.has(c.id) ? { ...c, status, statusNote: status === "done" || status === "planned" ? "" : c.statusNote } : c
+      selected.has(c.id)
+        ? { ...c, status, statusNote: status === "done" || status === "planned" ? "" : c.statusNote }
+        : c
     );
     save();
     render();
@@ -581,19 +571,10 @@
   function doBatchCopy() {
     const source = courses.filter((c) => selected.has(c.id));
     if (!source.length) return false;
-
     const mode = document.querySelector('input[name="copyMode"]:checked').value;
     const skip = els.skipConflicts.checked;
-    /** @type {Course[]} */
     const created = [];
-
-    const clone = (s, date) => ({
-      ...s,
-      id: uid(),
-      date,
-      status: "planned",
-      statusNote: "",
-    });
+    const clone = (s, date) => ({ ...s, id: uid(), date, status: "planned", statusNote: "" });
 
     if (mode === "dates") {
       if (!pickedTargetDates.length) {
@@ -622,12 +603,12 @@
     save();
     selected.clear();
     render();
-    showToast(created.length ? `已复制 ${created.length} 节课` : "没有可复制的新课程（可能都已存在）");
+    showToast(created.length ? `已复制 ${created.length} 节课` : "没有可复制的新课程");
     return true;
   }
 
-  // —— Events ——
-  document.querySelectorAll(".tab").forEach((btn) => {
+  // Events
+  document.querySelectorAll(".tabbar .tab").forEach((btn) => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
 
@@ -641,36 +622,48 @@
 
   document.getElementById("prevWeek").addEventListener("click", () => {
     weekStart = addDays(weekStart, -7);
+    selectedDay = toDateKey(weekStart);
+    selected.clear();
     renderCalendar();
   });
   document.getElementById("nextWeek").addEventListener("click", () => {
     weekStart = addDays(weekStart, 7);
+    selectedDay = toDateKey(weekStart);
+    selected.clear();
     renderCalendar();
   });
   document.getElementById("btnToday").addEventListener("click", () => {
     weekStart = startOfWeek(new Date());
+    selectedDay = toDateKey(new Date());
+    selected.clear();
+    switchTab("calendar");
     renderCalendar();
   });
-  document.getElementById("btnAdd").addEventListener("click", () => openCreate());
+
+  document.getElementById("btnAdd").addEventListener("click", () => {
+    if (activeTab === "dashboard") openPackageCreate();
+    else openCreate(selectedDay);
+  });
+  document.getElementById("btnAddDay").addEventListener("click", () => openCreate(selectedDay));
   document.getElementById("btnAddPackage").addEventListener("click", openPackageCreate);
 
-  els.calendar.addEventListener("click", (e) => {
-    const courseBtn = e.target.closest(".course");
-    if (courseBtn) {
-      e.stopPropagation();
-      toggleSelect(courseBtn.dataset.id);
-      return;
-    }
-    const add = e.target.closest("[data-add-date]");
-    if (add) openCreate(add.dataset.addDate);
+  els.dayStrip.addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-day]");
+    if (!chip) return;
+    selectedDay = chip.dataset.day;
+    selected.clear();
+    renderCalendar();
   });
 
-  els.calendar.addEventListener("dblclick", (e) => {
-    const courseBtn = e.target.closest(".course");
-    if (courseBtn) {
+  els.agenda.addEventListener("click", (e) => {
+    const toggle = e.target.closest("[data-toggle]");
+    if (toggle) {
       e.preventDefault();
-      openEdit(courseBtn.dataset.id);
+      toggleSelect(toggle.dataset.toggle);
+      return;
     }
+    const edit = e.target.closest("[data-edit]");
+    if (edit) openEdit(edit.dataset.edit);
   });
 
   els.packageGrid.addEventListener("click", (e) => {
@@ -684,18 +677,14 @@
   });
   document.getElementById("btnMarkDone").addEventListener("click", () => markSelected("done"));
   document.getElementById("btnMarkLeave").addEventListener("click", () => markSelected("leave"));
-
   document.getElementById("btnSelectAllWeek").addEventListener("click", () => {
-    const keys = new Set(Array.from({ length: 7 }, (_, i) => toDateKey(addDays(weekStart, i))));
-    courses.filter((c) => keys.has(c.date)).forEach((c) => selected.add(c.id));
+    courses.filter((c) => c.date === selectedDay).forEach((c) => selected.add(c.id));
     renderCalendar();
   });
-
   document.getElementById("btnClearSelect").addEventListener("click", () => {
     selected.clear();
     renderCalendar();
   });
-
   document.getElementById("btnBatchDelete").addEventListener("click", () => {
     if (!selected.size) return;
     if (!confirm(`确定删除选中的 ${selected.size} 节课？`)) return;
@@ -705,7 +694,6 @@
     render();
     showToast("已删除所选课程");
   });
-
   document.getElementById("btnBatchCopy").addEventListener("click", openCopyDialog);
 
   els.swatches.addEventListener("click", (e) => {
@@ -714,7 +702,6 @@
     activeColor = btn.dataset.color;
     renderSwatches(els.swatches, activeColor);
   });
-
   els.packageSwatches.addEventListener("click", (e) => {
     const btn = e.target.closest(".swatch");
     if (!btn) return;
@@ -723,7 +710,6 @@
   });
 
   els.courseForm.status.addEventListener("change", syncStatusNoteVisibility);
-
   els.packageSelect.addEventListener("change", () => {
     const pkg = packages.find((p) => p.id === els.packageSelect.value);
     if (pkg && !els.courseForm.title.value.trim()) {
@@ -776,7 +762,7 @@
     const packageId = String(fd.get("packageId") || "");
 
     if (!title || !date || !start || !end) return;
-    if (!validateTimes(start, end)) {
+    if (timeToMinutes(end) <= timeToMinutes(start)) {
       showToast("结束时间需晚于开始时间");
       return;
     }
@@ -799,9 +785,10 @@
       showToast("已更新");
     } else {
       courses.push({ id: uid(), ...payload });
-      weekStart = startOfWeek(parseDateKey(date));
       showToast("已记下这节课");
     }
+    weekStart = startOfWeek(parseDateKey(date));
+    selectedDay = date;
     save();
     els.courseDialog.close();
     render();
@@ -811,17 +798,18 @@
     e.preventDefault();
     const fd = new FormData(els.packageForm);
     const name = String(fd.get("name") || "").trim();
-    const child = String(fd.get("child") || "").trim();
-    const totalSessions = Math.max(1, Number(fd.get("totalSessions")) || 1);
-    const totalFee = Math.max(0, Number(fd.get("totalFee")) || 0);
-    const spentRaw = String(fd.get("spentFee") || "").trim();
-    const spentFee = spentRaw === "" ? null : Math.max(0, Number(spentRaw) || 0);
-    const deadline = String(fd.get("deadline") || "");
-    const note = String(fd.get("note") || "").trim();
-
     if (!name) return;
-
-    const payload = { name, child, totalSessions, totalFee, spentFee, deadline, note, color: packageColor };
+    const spentRaw = String(fd.get("spentFee") || "").trim();
+    const payload = {
+      name,
+      child: String(fd.get("child") || "").trim(),
+      totalSessions: Math.max(1, Number(fd.get("totalSessions")) || 1),
+      totalFee: Math.max(0, Number(fd.get("totalFee")) || 0),
+      spentFee: spentRaw === "" ? null : Math.max(0, Number(spentRaw) || 0),
+      deadline: String(fd.get("deadline") || ""),
+      note: String(fd.get("note") || "").trim(),
+      color: packageColor,
+    };
 
     if (editingPackageId) {
       packages = packages.map((p) => (p.id === editingPackageId ? { ...p, ...payload } : p));
@@ -862,13 +850,11 @@
 
   document.getElementById("closeCopy").addEventListener("click", () => els.copyDialog.close());
   document.getElementById("cancelCopy").addEventListener("click", () => els.copyDialog.close());
-
   els.copyForm.addEventListener("submit", (e) => {
     e.preventDefault();
     if (doBatchCopy()) els.copyDialog.close();
   });
 
-  // seed demo once
   if (!courses.length && !packages.length && !localStorage.getItem(STORAGE_KEY + ":seen")) {
     localStorage.setItem(STORAGE_KEY + ":seen", "1");
     const pkgId = uid();
@@ -885,13 +871,12 @@
         color: COLORS[0].value,
       },
     ];
-    const tue = addDays(weekStart, 1);
     courses = [
       {
         id: uid(),
         title: "游泳课",
         child: "",
-        date: toDateKey(tue),
+        date: selectedDay,
         start: "10:00",
         end: "11:00",
         note: "示例 · 可删可改",
