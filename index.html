@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>即课管家</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-grain" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>即课管家</h1>
+        <p>孩子培训课的周历本 · 出勤统计 · 兴趣课费用大盘</p>
+      </div>
+    </div>
+    <div class="top-actions" id="calendarActions">
+      <button type="button" class="btn ghost" id="btnToday">回到本周</button>
+      <button type="button" class="btn primary" id="btnAdd">＋ 记一节课</button>
+    </div>
+    <div class="top-actions" id="dashActions" hidden>
+      <button type="button" class="btn primary" id="btnAddPackage">＋ 新增兴趣课</button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="主界面">
+    <button type="button" class="tab active" role="tab" aria-selected="true" data-tab="calendar">周历安排</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="dashboard">数据大盘</button>
+  </nav>
+
+  <main class="shell">
+    <!-- 周历 -->
+    <div id="viewCalendar" class="view">
+      <section class="week-nav">
+        <button type="button" class="icon-btn" id="prevWeek" aria-label="上一周">‹</button>
+        <div class="week-label" id="weekLabel"></div>
+        <button type="button" class="icon-btn" id="nextWeek" aria-label="下一周">›</button>
+      </section>
+
+      <section class="toolbar" id="selectionBar" hidden>
+        <span id="selectionCount">已选 0 节</span>
+        <div class="toolbar-actions">
+          <button type="button" class="btn soft" id="btnEditSelected" hidden>编辑</button>
+          <button type="button" class="btn soft" id="btnMarkDone">标为已上</button>
+          <button type="button" class="btn soft" id="btnMarkLeave">标为请假</button>
+          <button type="button" class="btn soft" id="btnSelectAllWeek">本周全选</button>
+          <button type="button" class="btn soft" id="btnClearSelect">取消选择</button>
+          <button type="button" class="btn accent" id="btnBatchCopy">批量复制到…</button>
+          <button type="button" class="btn danger-ghost" id="btnBatchDelete">删除所选</button>
+        </div>
+      </section>
+
+      <section class="calendar" id="calendar" aria-label="周历"></section>
+
+      <section class="hint">
+        <p>点空白处加课；点卡片选中，双击编辑。可批量标记「已上 / 请假」，或复制到其他日期。</p>
+      </section>
+    </div>
+
+    <!-- 数据大盘 -->
+    <div id="viewDashboard" class="view" hidden>
+      <section class="dash-period">
+        <h2 class="section-title">上课统计</h2>
+        <div class="period-switch" role="group" aria-label="统计周期">
+          <button type="button" class="period-btn active" data-days="7">近 7 天</button>
+          <button type="button" class="period-btn" data-days="15">近 15 天</button>
+          <button type="button" class="period-btn" data-days="30">近 30 天</button>
+        </div>
+      </section>
+
+      <section class="stat-grid" id="statGrid"></section>
+
+      <section class="chart-panel">
+        <div class="panel-head">
+          <h3>出勤构成</h3>
+          <span class="subtle" id="chartPeriodLabel">近 7 天</span>
+        </div>
+        <div class="bar-stack" id="statusBars"></div>
+        <div class="bar-legend" id="statusLegend"></div>
+        <div class="by-course" id="byCourseStats"></div>
+      </section>
+
+      <section class="packages-head">
+        <h2 class="section-title">兴趣课汇总</h2>
+        <p class="subtle">登记总课时、总费用与备注；周历里的课关联后，会自动扣课时并估算消耗金额。</p>
+      </section>
+
+      <section class="package-grid" id="packageGrid"></section>
+    </div>
+  </main>
+
+  <!-- 新增 / 编辑单节课 -->
+  <dialog class="sheet" id="courseDialog">
+    <form method="dialog" id="courseForm">
+      <header>
+        <h2 id="dialogTitle">记一节课</h2>
+        <button type="button" class="icon-btn" id="closeDialog" aria-label="关闭">×</button>
+      </header>
+      <div class="form-body">
+        <label>
+          <span>关联兴趣课（可选）</span>
+          <select name="packageId" id="packageSelect">
+            <option value="">不关联包课</option>
+          </select>
+        </label>
+        <label>
+          <span>课程名称</span>
+          <input name="title" required placeholder="例如：游泳课" maxlength="40" />
+        </label>
+        <label>
+          <span>孩子（可选）</span>
+          <input name="child" placeholder="例如：小宝" maxlength="20" list="childList" />
+          <datalist id="childList"></datalist>
+        </label>
+        <label>
+          <span>日期</span>
+          <input name="date" type="date" required />
+        </label>
+        <div class="row-2">
+          <label>
+            <span>开始</span>
+            <input name="start" type="time" required value="10:00" />
+          </label>
+          <label>
+            <span>结束</span>
+            <input name="end" type="time" required value="11:00" />
+          </label>
+        </div>
+        <label>
+          <span>上课状态</span>
+          <select name="status">
+            <option value="planned">待上</option>
+            <option value="done">已完成</option>
+            <option value="leave">请假</option>
+            <option value="missed">缺席 / 未上</option>
+            <option value="other">其他原因</option>
+          </select>
+        </label>
+        <label id="statusNoteWrap" hidden>
+          <span>原因说明</span>
+          <input name="statusNote" placeholder="例如：发烧请假、场馆关闭…" maxlength="80" />
+        </label>
+        <label>
+          <span>地点 / 备注（可选）</span>
+          <input name="note" placeholder="场馆、老师、第几节…" maxlength="80" />
+        </label>
+        <label class="color-field">
+          <span>颜色</span>
+          <div class="swatches" id="swatches"></div>
+        </label>
+      </div>
+      <footer>
+        <button type="button" class="btn ghost" id="deleteCourse" hidden>删除这节</button>
+        <div class="footer-right">
+          <button type="button" class="btn ghost" id="cancelDialog">取消</button>
+          <button type="submit" class="btn primary">保存</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- 兴趣课包 -->
+  <dialog class="sheet wide" id="packageDialog">
+    <form method="dialog" id="packageForm">
+      <header>
+        <h2 id="packageDialogTitle">新增兴趣课</h2>
+        <button type="button" class="icon-btn" id="closePackage" aria-label="关闭">×</button>
+      </header>
+      <div class="form-body">
+        <label>
+          <span>兴趣课名称</span>
+          <input name="name" required placeholder="例如：游泳课" maxlength="40" />
+        </label>
+        <label>
+          <span>孩子（可选）</span>
+          <input name="child" placeholder="例如：小宝" maxlength="20" list="childList" />
+        </label>
+        <div class="row-2">
+          <label>
+            <span>总课时（节）</span>
+            <input name="totalSessions" type="number" min="1" max="999" required value="24" />
+          </label>
+          <label>
+            <span>总费用（元）</span>
+            <input name="totalFee" type="number" min="0" step="0.01" required value="0" />
+          </label>
+        </div>
+        <label>
+          <span>手动已消耗费用（可选，留空则按已上课时自动算）</span>
+          <input name="spentFee" type="number" min="0" step="0.01" placeholder="留空 = 自动估算" />
+        </label>
+        <label>
+          <span>目标完成日（可选）</span>
+          <input name="deadline" type="date" />
+        </label>
+        <label>
+          <span>备注</span>
+          <input name="note" placeholder="例如：10月前完成" maxlength="100" />
+        </label>
+        <label class="color-field">
+          <span>颜色</span>
+          <div class="swatches" id="packageSwatches"></div>
+        </label>
+      </div>
+      <footer>
+        <button type="button" class="btn ghost" id="deletePackage" hidden>删除此课</button>
+        <div class="footer-right">
+          <button type="button" class="btn ghost" id="cancelPackage">取消</button>
+          <button type="submit" class="btn primary">保存</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- 批量复制 -->
+  <dialog class="sheet wide" id="copyDialog">
+    <form method="dialog" id="copyForm">
+      <header>
+        <h2>批量复制课程</h2>
+        <button type="button" class="icon-btn" id="closeCopy" aria-label="关闭">×</button>
+      </header>
+      <div class="form-body">
+        <p class="copy-summary" id="copySummary"></p>
+        <div class="copy-modes">
+          <label class="chip-radio">
+            <input type="radio" name="copyMode" value="dates" checked />
+            <span>挑具体日期</span>
+          </label>
+          <label class="chip-radio">
+            <input type="radio" name="copyMode" value="weeks" />
+            <span>复制到后面几周</span>
+          </label>
+        </div>
+
+        <div id="datesMode">
+          <label>
+            <span>目标日期（可多选）</span>
+            <div class="date-pick-row">
+              <input type="date" id="pickDate" />
+              <button type="button" class="btn soft" id="addPickDate">加入列表</button>
+            </div>
+          </label>
+          <ul class="picked-dates" id="pickedDates"></ul>
+        </div>
+
+        <div id="weeksMode" hidden>
+          <label>
+            <span>再往后复制几周</span>
+            <input type="number" id="weekCount" min="1" max="12" value="4" />
+          </label>
+          <p class="subtle">会按「星期几 + 时段」平移；复制出来的课默认为「待上」。</p>
+        </div>
+
+        <label class="check-line">
+          <input type="checkbox" id="skipConflicts" checked />
+          <span>若目标日已有同名同时段课程，则跳过</span>
+        </label>
+      </div>
+      <footer>
+        <div class="footer-right">
+          <button type="button" class="btn ghost" id="cancelCopy">取消</button>
+          <button type="submit" class="btn accent">确认复制</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
