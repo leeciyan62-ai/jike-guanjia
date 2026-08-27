@@ -294,6 +294,28 @@ body {
   font: inherit;
   width: 100%;
 }
+
+.course.selected {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--coral);
+}
+
+.course.selected .check {
+  background: #fff;
+  border-color: #fff;
+}
+
+.course.selected .check::after {
+  content: "";
+  position: absolute;
+  left: 0.35rem;
+  top: 0.12rem;
+  width: 0.32rem;
+  height: 0.58rem;
+  border: solid var(--coral);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 .course .time {
   display: block;
   font-size: 0.78rem;
